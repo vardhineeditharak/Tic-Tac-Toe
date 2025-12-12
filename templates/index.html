@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tic-Tac-Toe AI</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Tic-Tac-Toe</h1>
+    
+    <div class="controls">
+        <select id="mode" aria-label="Game Mode">
+          <option value="hvh">2 Players</option>
+          <option value="hvc" selected>Vs Computer</option>
+        </select>
+        
+        <select id="difficulty" aria-label="Difficulty">
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard" selected>Hard</option>
+        </select>
+        
+        <select id="playAs" aria-label="Play as X or O">
+          <option value="X" selected>Play as X</option>
+          <option value="O">Play as O</option>
+        </select>
+        
+        <button id="restart">New Game</button>
+    </div>
+
+    <div id="board" class="board">
+      </div>
+
+    <div class="info">
+      <div id="status">Turn: <strong id="turn">X</strong></div>
+      <div id="message" class="muted">Start game</div>
+    </div>
+  </div>
+
+<script>
+const boardEl = document.getElementById('board');
+const statusTurn = document.getElementById('turn');
+const statusMsg = document.getElementById('message');
+const modeSelect = document.getElementById('mode');
+const diffSelect = document.getElementById('difficulty');
+const playAsSelect = document.getElementById('playAs');
+const restartBtn = document.getElementById('restart');
+
+let board = Array(9).fill(null);
+let current = 'X';
+let running = true;
+let winningLine = []; // To store indices of winning cells
+
+function createBoard(){
+  boardEl.innerHTML = '';
+  for(let i = 0; i < 9; i++){
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.index = i;
+    cell.addEventListener('click', onCellClick);
+    boardEl.appendChild(cell);
+  }
+}
+
+function render(){
+  for(let i = 0; i < 9; i++){
+    const cell = boardEl.children[i];
+    const val = board[i];
+    
+    cell.textContent = val || '';
+    
+    // Reset classes, keep basic 'cell'
+    cell.className = 'cell';
+    
+    // Add class for X or O (for color)
+    if(val) {
+        cell.classList.add(val);
+        cell.classList.add('taken');
+    }
+
+    // Highlight winning line
+    if(winningLine.includes(i)){
+        cell.classList.add('win');
+    }
+  }
+  statusTurn.textContent = current;
+}
+
+function checkWinner(b){
+  const lines = [
+    [0,1,2],[3,4,5],[6,7,8],
+    [0,3,6],[1,4,7],[2,5,8],
+    [0,4,8],[2,4,6]
+  ];
+  for(const [a,x,y] of lines){
+    if(b[a] && b[a] === b[x] && b[a] === b[y]) {
+        winningLine = [a, x, y]; // Store winning indices
+        return b[a];
+    }
+  }
+  if(b.every(Boolean)) return 'Tie';
+  return null;
+}
+
+async function onCellClick(e){
+  const i = Number(e.currentTarget.dataset.index);
+  if(!running || board[i]) return;
+
+  // If vs computer, block clicks when it's computer's turn
+  if(modeSelect.value === 'hvc' && current !== playAsSelect.value) return;
+
+  board[i] = current;
+  
+  // Check win before switching turn
+  const winner = checkWinner(board);
+  if(winner){ 
+      render(); // Render immediately to show the move
+      endGame(winner); 
+      return; 
+  }
+
+  // switch turn
+  current = current === 'X' ? 'O' : 'X';
+  render();
+
+  if(modeSelect.value === 'hvc' && current !== playAsSelect.value){
+    await computerTurn();
+  }
+}
+
+function endGame(winner){
+  running = false;
+  render(); // Re-render to show winning colors
+  if(winner === 'Tie'){
+    statusMsg.textContent = "It's a tie!";
+    statusMsg.style.color = '#94a3b8';
+  } else {
+    statusMsg.textContent = `${winner} Wins!`;
+    statusMsg.style.color = '#4ade80'; // Green text
+  }
+}
+
+function resetBoard(){
+  board = Array(9).fill(null);
+  winningLine = [];
+  current = 'X';
+  running = true;
+  statusMsg.textContent = 'Game in progress...';
+  statusMsg.style.color = '#94a3b8';
+  render();
+
+  if(modeSelect.value === 'hvc' && playAsSelect.value === 'O'){
+    setTimeout(() => { computerTurn(); }, 500);
+  }
+}
+
+async function computerTurn(){
+  statusMsg.textContent = 'Thinking...';
+  try{
+    const resp = await fetch('/ai_move', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({board: board, ai_player: current, difficulty: diffSelect.value})
+    });
+    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    const move = data.move;
+    
+    if(move == null){
+       // It might be a tie immediately
+       const winner = checkWinner(board);
+       if(winner) endGame(winner);
+       return;
+    }
+
+    board[move] = current;
+    
+    const winner = checkWinner(board);
+    if(winner){ 
+        render();
+        endGame(winner); 
+        return; 
+    }
+
+    current = current === 'X' ? 'O' : 'X';
+    statusMsg.textContent = 'Your turn';
+    render();
+  }catch(err){
+    statusMsg.textContent = 'AI Error';
+    console.error(err);
+  }
+}
+
+createBoard();
+resetBoard();
+
+restartBtn.addEventListener('click', resetBoard);
+modeSelect.addEventListener('change', resetBoard);
+playAsSelect.addEventListener('change', resetBoard);
+</script>
+</body>
+</html>
